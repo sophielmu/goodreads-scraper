@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 
 	"github.com/gocolly/colly"
 )
@@ -11,9 +13,15 @@ type Book struct {
 	url   string
 }
 
-func main() {
+type Shelf struct {
+	name string
+	url  string
+}
 
+func main() {
+	defaultShelfNames := []string{"to-read", "currently-reading", "read", "favorites"}
 	currentlyReading := make([]Book, 0, 200)
+	shelves := make([]Shelf, 0, 200)
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("www.goodreads.com"))
@@ -44,6 +52,40 @@ func main() {
 		title := h.Text
 
 		currentlyReading = append(currentlyReading, Book{title, link})
+	})
+
+	c.OnHTML("a[href]", func(h *colly.HTMLElement) {
+		if h.Attr("class") != "actionLinkLite userShowPageShelfListItem" {
+			return
+		}
+
+		splitShelfName := strings.Split(h.Text, "\u200E")
+		cleaned := strings.TrimLeft(splitShelfName[0], "\r\n ")
+		shelf := Shelf{cleaned, h.Attr("href")}
+		shelves = append(shelves, shelf)
+
+		fmt.Println(shelf.name)
+		if !slices.Contains(defaultShelfNames, shelf.name) {
+			fmt.Println("Returning, can't find shelf")
+			return
+		}
+
+		switch foundShelfName := shelf.name; foundShelfName {
+		case defaultShelfNames[1]:
+			fmt.Println("currently-reading")
+		case defaultShelfNames[2]:
+			fmt.Println("read")
+		}
+
+	})
+
+	c.OnHTML("a[href]", func(h *colly.HTMLElement) {
+		if h.Attr("class") != "userPagePhoto" {
+			return
+		}
+
+		userPhoto := h.Attr("href")
+		fmt.Println("User photo link - https://www.goodreads.com" + userPhoto)
 	})
 
 	c.Visit("https://www.goodreads.com/user/show/38718384-sophie-marshall-unitt")
