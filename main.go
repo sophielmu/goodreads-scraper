@@ -2,15 +2,25 @@ package main
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/gocolly/colly"
 )
 
+type UserProfile struct {
+	photoUrl string
+	shelves  []Shelf
+}
+
 type Book struct {
-	title string
-	url   string
+	coverUrl  string
+	title     string
+	author    string
+	isbn      string
+	numPages  string
+	rating    int
+	dateAdded string
+	dateRead  string
 }
 
 type Shelf struct {
@@ -18,40 +28,34 @@ type Shelf struct {
 	url  string
 }
 
-func main() {
-	defaultShelfNames := []string{"to-read", "currently-reading", "read", "favorites"}
-	currentlyReading := make([]Book, 0, 200)
-	shelves := make([]Shelf, 0, 200)
+func getBooksFromShelf(url string) []Book {
+	result := make([]Book, 0, 10)
+	collector := colly.NewCollector()
 
-	c := colly.NewCollector(
-		colly.AllowedDomains("www.goodreads.com"))
-
-	c.OnRequest(func(r *colly.Request) {
-		fmt.Println("Accessing goodreads profile")
+	collector.OnRequest(func(r *colly.Request) {
+		fmt.Println("Grabbing data from " + url)
 	})
 
-	c.OnError(func(r *colly.Response, err error) {
-		fmt.Println("❌ Request error:", err)
-		if r != nil {
-			fmt.Println("Status Code:", r.StatusCode)
-			fmt.Println("URL:", r.Request.URL)
-			fmt.Println("Body (if any):", string(r.Body))
+	collector.OnHTML("tr.bookalike.review", func(h *colly.HTMLElement) {
+		book := Book{
+			title:    strings.TrimSpace(h.ChildText("td.field.title .value a")),
+			author:   strings.TrimSpace(h.ChildText("td.field.author .value a")),
+			coverUrl: h.ChildAttr("td.field.cover img", "src"),
 		}
+		result = append(result, book)
 	})
 
-	c.OnResponse(func(r *colly.Response) {
-		fmt.Println("Received response!", r.StatusCode)
-	})
+	collector.Visit(url)
+	return result
+}
 
-	c.OnHTML("a[href]", func(h *colly.HTMLElement) {
-		if h.Attr("class") != "bookTitle" {
-			return
-		}
+func getUserProfile(url string, c *colly.Collector) UserProfile {
+	var profile UserProfile
 
-		link := h.Attr("href")
-		title := h.Text
+	c.OnHTML("a.userPagePhoto[href]", func(h *colly.HTMLElement) {
 
-		currentlyReading = append(currentlyReading, Book{title, link})
+		userPhotoLink := "https://www.goodreads.com" + h.Attr("href")
+		fmt.Println("User photo link - ", userPhotoLink)
 	})
 
 	c.OnHTML("a[href]", func(h *colly.HTMLElement) {
@@ -61,53 +65,42 @@ func main() {
 
 		splitShelfName := strings.Split(h.Text, "\u200E")
 		cleaned := strings.TrimLeft(splitShelfName[0], "\r\n ")
-		shelf := Shelf{cleaned, h.Attr("href")}
-		shelves = append(shelves, shelf)
-
-		fmt.Println(shelf.name)
-		if !slices.Contains(defaultShelfNames, shelf.name) {
-			fmt.Println("Returning, can't find shelf")
-			return
-		}
-
-		switch foundShelfName := shelf.name; foundShelfName {
-		case defaultShelfNames[1]:
-			fmt.Println("currently-reading")
-		case defaultShelfNames[2]:
-			fmt.Println("read")
-		}
-
+		shelf := Shelf{cleaned, "https://www.goodreads.com" + h.Attr("href")}
+		profile.shelves = append(profile.shelves, shelf)
 	})
 
-	c.OnHTML("a[href]", func(h *colly.HTMLElement) {
-		if h.Attr("class") != "userPagePhoto" {
-			return
-		}
-
-		userPhoto := h.Attr("href")
-		fmt.Println("User photo link - https://www.goodreads.com" + userPhoto)
+	c.OnScraped(func(r *colly.Response) {
+		fmt.Println("Finished scraping:", url)
 	})
 
-	c.Visit("https://www.goodreads.com/user/show/38718384-sophie-marshall-unitt")
+	c.Visit(url)
 
-	// reviewCollector := c.Clone()
+	return profile
+}
 
-	// reviews := make([]Review, 0, 200)
+func main() {
 
-	// e.Request.Visit(link)
+	shelvesToRead := []string{"currently-reading", "read"}
+	profileUrl := "https://www.goodreads.com/user/show/38718384-sophie-marshall-unitt"
 
-	// reviewCollector.OnRequest(func(r *colly.Request) {
-	// 	fmt.Println("runninggg")
-	// })
+	c := colly.NewCollector(
+		colly.AllowedDomains("www.goodreads.com"))
 
-	// reviewCollector.OnResponse(func(r *colly.Response) {
-	// 	fmt.Println("Visited", r.Request.URL)
-	// })
-	// reviewCollector.Visit("https://thestorygraph.com")
+	user := getUserProfile(profileUrl, c)
 
-	// enc := json.NewEncoder(os.Stdout)
-	// enc.SetIndent("", "  ")
+	// make a map collection to find the item we want
+	shelfMap := make(map[string]Shelf)
+	for _, myShelf := range user.shelves {
+		shelfMap[myShelf.name] = myShelf
+	}
 
-	// // Dump json to the standard output
-	// enc.Encode(courses)
+	if found, ok := shelfMap[shelvesToRead[0]]; ok {
+		currentlyReading := getBooksFromShelf(found.url)
+		fmt.Println(currentlyReading)
+	}
+
+	if found, ok := shelfMap[shelvesToRead[1]]; ok {
+		recentlyRead := getBooksFromShelf(found.url)
+		fmt.Println(recentlyRead)
+	}
 }
