@@ -42,11 +42,13 @@ func getBooksFromShelf(url string) []Book {
 		var numberOfPages int
 		var rating int
 
-		if i, err := strconv.Atoi(strings.TrimSpace(h.ChildText("td.field.num_pages .value nobr"))); err == nil {
+		pagesString := h.ChildText("td.field.num_pages .value nobr")
+		if i, err := strconv.Atoi(strings.TrimSpace(strings.ReplaceAll(pagesString, "pp", ""))); err == nil {
 			numberOfPages = i
 		}
 
-		if i, err := strconv.Atoi(strings.TrimSpace(h.ChildAttr("td.field.rating stars", "data-rating"))); err == nil {
+		ratingStr := h.ChildAttr("td.field.rating div.stars", "data-rating")
+		if i, err := strconv.Atoi(strings.TrimSpace(ratingStr)); err == nil {
 			rating = i
 		}
 
@@ -57,8 +59,8 @@ func getBooksFromShelf(url string) []Book {
 			isbn:          strings.TrimSpace(h.ChildText("td.field.isbn .value")),
 			numberOfPages: numberOfPages,
 			rating:        rating,
-			dateAdded:     strings.TrimSpace("td.field.date_added .value span"),
-			dateRead:      strings.TrimSpace("td.field.date_read .value span"),
+			dateAdded:     strings.TrimSpace(h.ChildText("td.field.date_added .value span")),
+			dateRead:      strings.TrimSpace(h.ChildText("td.field.date_read .value span")),
 		}
 		result = append(result, book)
 	})
