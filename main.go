@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/gocolly/colly"
@@ -13,19 +14,35 @@ type UserProfile struct {
 }
 
 type Book struct {
-	coverUrl  string
-	title     string
-	author    string
-	isbn      string
-	numPages  string
-	rating    int
-	dateAdded string
-	dateRead  string
+	coverUrl      string
+	title         string
+	author        string
+	isbn          string
+	numberOfPages int
+	rating        int
+	dateAdded     string
+	dateRead      string
 }
 
 type Shelf struct {
 	name string
 	url  string
+}
+
+func convertStarStringToNumber(starString string) int {
+	switch starString {
+	case "it was amazing":
+		return 5
+	case "really liked it":
+		return 4
+	case "liked it":
+		return 3
+	case "it was ok":
+		return 2
+	case "did not like it":
+		return 1
+	}
+	return 0
 }
 
 func getBooksFromShelf(url string) []Book {
@@ -37,10 +54,24 @@ func getBooksFromShelf(url string) []Book {
 	})
 
 	collector.OnHTML("tr.bookalike.review", func(h *colly.HTMLElement) {
+		var numberOfPages int
+
+		pagesString := h.ChildText("td.field.num_pages .value nobr")
+		if i, err := strconv.Atoi(strings.TrimSpace(strings.ReplaceAll(pagesString, "pp", ""))); err == nil {
+			numberOfPages = i
+		}
+
+		ratingStr := h.ChildAttr("td.field.rating .value span", "title")
+
 		book := Book{
-			title:    strings.TrimSpace(h.ChildText("td.field.title .value a")),
-			author:   strings.TrimSpace(h.ChildText("td.field.author .value a")),
-			coverUrl: h.ChildAttr("td.field.cover img", "src"),
+			title:         strings.TrimSpace(h.ChildText("td.field.title .value a")),
+			author:        strings.TrimSpace(h.ChildText("td.field.author .value a")),
+			coverUrl:      h.ChildAttr("td.field.cover img", "src"),
+			isbn:          strings.TrimSpace(h.ChildText("td.field.isbn .value")),
+			numberOfPages: numberOfPages,
+			rating:        convertStarStringToNumber(ratingStr),
+			dateAdded:     strings.TrimSpace(h.ChildText("td.field.date_added .value span")),
+			dateRead:      strings.TrimSpace(h.ChildText("td.field.date_read .value span")),
 		}
 		result = append(result, book)
 	})
